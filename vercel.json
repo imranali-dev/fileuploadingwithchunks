@@ -1,14 +1,13 @@
 {
-  "version": 2,
-  "functions": {
-    "api/**/*.js": {
-      "runtime": "nodejs18.x",
-      "memory": 1024,
-      "maxDuration": 60
-    }
-  },
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/api/server" }
-  ]
+"version": 2,
+"functions": {
+  "api/**/*.js": {
+    "memory": 1024,
+    "maxDuration": 60
+  }
+},
+"rewrites": [
+  { "source": "/api/(.*)", "destination": "/api/index.js" },
+  { "source": "/(.*)", "destination": "/api/index.js" }
+]
 }
-
