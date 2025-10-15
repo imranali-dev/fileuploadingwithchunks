@@ -4,7 +4,7 @@
   "description": "Production-ready large file upload system with chunked uploads and GridFS storage",
   "main": "app.js",
   "engines": {
-    "node": "18.x"
+    "node": "22.x"
   },
   "scripts": {
     "start": "node app.js",
