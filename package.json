@@ -2,10 +2,9 @@
   "name": "large-file-upload-system",
   "version": "1.0.0",
   "description": "Production-ready large file upload system with chunked uploads and GridFS storage",
-  "main": "server.js",
+  "main": "app.js",
   "engines": {
-    "node": ">=18.0.0",
-    "npm": ">=9.0.0"
+    "node": "18.x"
   },
   "scripts": {
     "start": "node app.js",
@@ -13,6 +12,8 @@
     "dev:debug": "NODE_ENV=development nodemon --inspect app.js",
     "prod": "NODE_ENV=production node app.js",
     "legacy": "node server.js",
+    "build": "echo 'No build step required'",
+    "vercel-build": "echo 'Vercel build complete'",
     "test": "jest --coverage",
     "test:watch": "jest --watch",
     "lint": "eslint .",
@@ -41,10 +42,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/large-file-upload-system.git"
+    "url": "https://github.com/imranali-dev/fileuploadingwithchunks.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/large-file-upload-system/issues"
+    "url": "https://github.com/imranali-dev/fileuploadingwithchunks/issues"
   },
   "dependencies": {
     "express": "^4.19.2",
