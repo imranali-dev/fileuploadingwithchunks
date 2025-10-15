@@ -1,0 +1,194 @@
+// vercel-app.js - Wrapper for Vercel deployment
+// This wraps your existing app.js to work with Vercel's serverless architecture
+
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+const helmet = require('helmet');
+const compression = require('compression');
+const path = require('path');
+
+// Import your existing modules
+const config = require('./config');
+const apiRoutes = require('./routes/api');
+const { errorHandler } = require('./utils/errors');
+const logger = require('./services/logger');
+
+const app = express();
+
+// Middleware
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
+app.use(compression());
+app.use(cors({
+  origin: process.env.ALLOWED_ORIGINS || '*',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Cache MongoDB connection for Vercel
+let cachedDb = null;
+
+async function connectToDatabase() {
+  if (cachedDb && mongoose.connection.readyState === 1) {
+    return cachedDb;
+  }
+
+  try {
+    const mongoUri = process.env.MONGO_URI || config.database.uri;
+    
+    if (!mongoUri) {
+      throw new Error('MONGO_URI environment variable is not set');
+    }
+
+    const options = {
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+      maxPoolSize: 10,
+      minPoolSize: 2,
+    };
+
+    await mongoose.connect(mongoUri, options);
+    cachedDb = mongoose.connection;
+    
+    logger.info('MongoDB connected successfully');
+    return cachedDb;
+  } catch (error) {
+    logger.error('MongoDB connection error:', error);
+    throw error;
+  }
+}
+
+// Health check endpoints
+app.get('/health', async (req, res) => {
+  try {
+    const dbConnected = mongoose.connection.readyState === 1;
+    res.status(dbConnected ? 200 : 503).json({
+      status: dbConnected ? 'healthy' : 'unhealthy',
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'production',
+      database: dbConnected ? 'connected' : 'disconnected',
+      platform: 'vercel',
+      warning: 'Chunked uploads may not work properly on Vercel serverless'
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: 'unhealthy',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+app.get('/health/detailed', async (req, res) => {
+  try {
+    await connectToDatabase();
+    
+    const dbStatus = mongoose.connection.readyState;
+    const statusMap = {
+      0: 'disconnected',
+      1: 'connected',
+      2: 'connecting',
+      3: 'disconnecting'
+    };
+
+    res.json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'production',
+      platform: 'vercel-serverless',
+      database: {
+        status: statusMap[dbStatus],
+        name: mongoose.connection.name || 'unknown'
+      },
+      memory: {
+        heapUsed: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB',
+        heapTotal: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + ' MB'
+      },
+      uptime: process.uptime() + ' seconds',
+      warnings: [
+        'Vercel serverless functions are stateless',
+        'Chunked uploads require persistent state',
+        'File uploads may fail for large files',
+        'Consider using Railway, Render, or traditional hosting'
+      ]
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: 'unhealthy',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Serve static files
+app.use(express.static('./', {
+  index: 'index.html',
+  setHeaders: (res, path) => {
+    if (path.endsWith('.html')) {
+      res.setHeader('Content-Type', 'text/html');
+    }
+  }
+}));
+
+// Database connection middleware
+app.use(async (req, res, next) => {
+  try {
+    await connectToDatabase();
+    next();
+  } catch (error) {
+    logger.error('Database connection failed:', error);
+    res.status(503).json({
+      success: false,
+      error: 'Service Unavailable',
+      message: 'Unable to connect to database',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// API Routes
+app.use('/api', apiRoutes);
+
+// Root route - serve index.html
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    error: 'Not Found',
+    message: `Cannot ${req.method} ${req.path}`,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Error handler
+app.use(errorHandler);
+
+// Export for Vercel
+module.exports = app;
+
+// For local testing
+if (require.main === module) {
+  const PORT = process.env.PORT || 3000;
+  connectToDatabase()
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+        console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+      });
+    })
+    .catch((error) => {
+      console.error('Failed to start server:', error);
+      process.exit(1);
+    });
+}
