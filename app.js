@@ -248,12 +248,14 @@ class Application {
 }
 
 // Create and start the application
-const app = new Application();
+// Export Express app for Vercel
+const application = new Application();
+module.exports = application.getApp();
 
-// Start the application
-app.start().catch((error) => {
-  console.error('Failed to start application:', error);
-  process.exit(1);
-});
-
-module.exports = app;
+// Only start the server locally (not on Vercel)
+if (process.env.NODE_ENV !== 'production') {
+  application.start().catch((error) => {
+    console.error('Failed to start application:', error);
+    process.exit(1);
+  });
+}
