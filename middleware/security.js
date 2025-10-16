@@ -293,7 +293,9 @@ const compression = require('compression');
 // Trust proxy middleware (for accurate IP addresses)
 const trustProxy = (req, res, next) => {
   // Trust first proxy (useful when behind load balancer)
-  req.ip = req.ip || req.connection.remoteAddress;
+  req.clientIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+
+  // req.ip = req.ip || req.connection.remoteAddress;
   next();
 };
 
