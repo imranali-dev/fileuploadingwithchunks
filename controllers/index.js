@@ -144,53 +144,96 @@ class FileController {
   // List files
   listFiles = asyncHandler(async (req, res) => {
     try {
-      const { page, limit, status, sortBy, sortOrder } = req.query;
+      // Set default values for query parameters
+      const page = parseInt(req.query.page) || 1;
+      const limit = Math.min(parseInt(req.query.limit) || 50, 100); // Cap at 100
+      const status = req.query.status;
+      const sortBy = req.query.sortBy || 'createdAt';
+      const sortOrder = req.query.sortOrder || 'desc';
+      
+      logger.info('List files request', { page, limit, status, sortBy, sortOrder });
       
       // Ensure database connection before querying
       const mongoose = require('mongoose');
-      const databaseService = require('../services/database');
       
-      // Wait for database connection if not ready
+      // Check database connection
       if (mongoose.connection.readyState !== 1) {
-        await databaseService.connect();
+        logger.error('Database not connected', { readyState: mongoose.connection.readyState });
+        
+        // Return empty result instead of error for better UX
+        return res.json({
+          success: true,
+          data: {
+            files: [],
+            pagination: {
+              page,
+              limit,
+              total: 0,
+              pages: 0
+            }
+          },
+          message: 'Database temporarily unavailable - showing empty list'
+        });
       }
       
       const FileUpload = require('../models/FileUpload');
       
       const query = {};
-      if (status) {
+      if (status && ['pending', 'uploading', 'processing', 'completed', 'failed', 'cancelled'].includes(status)) {
         query.status = status;
       }
 
-      const skip = (parseInt(page) - 1) * parseInt(limit);
+      const skip = Math.max(0, (page - 1) * limit);
       const sort = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
+
+      logger.info('Database query', { query, skip, limit, sort });
 
       const [files, total] = await Promise.all([
         FileUpload.find(query)
-          .select('-__v -metadata')
+          .select('-__v')
           .sort(sort)
           .skip(skip)
-          .limit(parseInt(limit))
-          .lean(),
+          .limit(limit)
+          .lean()
+          .catch(err => {
+            logger.error('Error finding files', err);
+            throw err;
+          }),
         FileUpload.countDocuments(query)
+          .catch(err => {
+            logger.error('Error counting files', err);
+            throw err;
+          })
       ]);
+
+      logger.info('Files retrieved', { count: files.length, total });
 
       res.json({
         success: true,
         data: {
-          files,
+          files: files || [],
           pagination: {
-            page: parseInt(page),
-            limit: parseInt(limit),
-            total,
-            pages: Math.ceil(total / parseInt(limit))
+            page,
+            limit,
+            total: total || 0,
+            pages: Math.ceil((total || 0) / limit)
           }
         }
       });
 
     } catch (error) {
-      logger.error('Error listing files', error);
-      throw error;
+      logger.error('Error listing files', {
+        message: error.message,
+        stack: error.stack,
+        query: req.query
+      });
+      
+      res.status(500).json({
+        success: false,
+        error: 'Internal Server Error',
+        message: 'Failed to retrieve files',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
     }
   });
 
@@ -326,21 +369,38 @@ class HealthController {
   // Health check
   healthCheck = asyncHandler(async (req, res) => {
     try {
-      const databaseService = require('../services/database');
+      const mongoose = require('mongoose');
       
-      const dbHealth = await databaseService.healthCheck();
+      // Quick database check
+      let dbStatus = 'disconnected';
+      let dbError = null;
+      
+      try {
+        if (mongoose.connection.readyState === 1) {
+          // Try a simple ping
+          await mongoose.connection.db.admin().ping();
+          dbStatus = 'connected';
+        }
+      } catch (err) {
+        dbError = err.message;
+        dbStatus = 'error';
+      }
       
       const health = {
-        status: dbHealth.status === 'healthy' ? 'OK' : 'DEGRADED',
+        status: dbStatus === 'connected' ? 'OK' : 'DEGRADED',
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
-        mongodb: dbHealth,
+        mongodb: {
+          status: dbStatus,
+          readyState: mongoose.connection.readyState,
+          error: dbError
+        },
         memory: process.memoryUsage(),
         system: {
           platform: process.platform,
           nodeVersion: process.version,
-          pid: process.pid,
-          hostname: require('os').hostname()
+          arch: process.arch,
+          env: process.env.NODE_ENV
         }
       };
 
@@ -353,7 +413,11 @@ class HealthController {
       res.status(503).json({
         status: 'UNHEALTHY',
         timestamp: new Date().toISOString(),
-        error: error.message
+        error: error.message,
+        mongodb: {
+          status: 'error',
+          readyState: 0
+        }
       });
     }
   });
