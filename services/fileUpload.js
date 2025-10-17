@@ -183,14 +183,23 @@ class FileUploadService {
   // Complete upload
   async completeUpload(fileId) {
     try {
+      logger.logUpload(fileId, 'complete upload started');
       this.validateFileId(fileId);
 
       const fileUpload = await FileUpload.findByFileId(fileId);
       if (!fileUpload) {
+        logger.logUploadError('complete upload', new Error('Upload session not found'), { fileId });
         throw new NotFoundError('Upload session');
       }
 
+      logger.logUpload(fileId, 'file upload found', {
+        status: fileUpload.status,
+        uploadedChunks: fileUpload.uploadedChunks,
+        totalChunks: fileUpload.totalChunks
+      });
+
       if (fileUpload.status === 'completed') {
+        logger.logUpload(fileId, 'file already completed');
         return {
           fileId,
           message: 'File already processed',
@@ -210,33 +219,41 @@ class FileUploadService {
 
       // Mark as processing
       await fileUpload.markAsProcessing();
-
-      // Merge chunks in background
-      setImmediate(() => {
-        this.mergeChunks(fileId).catch(async (err) => {
-          logger.logUploadError('merge chunks', err, { fileId });
-          try {
-            await FileUpload.findOneAndUpdate(
-              { fileId },
-              { 
-                status: 'failed',
-                errorMessage: err.message,
-                $inc: { retryCount: 1 }
-              }
-            );
-          } catch (updateError) {
-            logger.logUploadError('update failed status', updateError, { fileId });
-          }
-        });
-      });
-
       logger.logUpload(fileId, 'marked for processing');
 
-      return {
-        fileId,
-        message: 'Upload completed, processing file...',
-        status: 'processing'
-      };
+      // Process chunks synchronously for better reliability
+      try {
+        logger.logUpload(fileId, 'starting merge process');
+        await this.mergeChunks(fileId);
+        logger.logUpload(fileId, 'merge process completed successfully');
+        
+        return {
+          fileId,
+          message: 'File uploaded and processed successfully!',
+          status: 'completed'
+        };
+        
+      } catch (err) {
+        logger.logUploadError('merge chunks', err, { fileId });
+        
+        // Mark as failed
+        try {
+          await FileUpload.findOneAndUpdate(
+            { fileId },
+            { 
+              status: 'failed',
+              errorMessage: err.message,
+              $inc: { retryCount: 1 },
+              updatedAt: new Date()
+            }
+          );
+          logger.logUpload(fileId, 'marked as failed', { error: err.message });
+        } catch (updateError) {
+          logger.logUploadError('update failed status', updateError, { fileId });
+        }
+        
+        throw new UploadError(`File processing failed: ${err.message}`, fileId);
+      }
 
     } catch (error) {
       logger.logUploadError('complete upload', error, { fileId });
@@ -262,18 +279,34 @@ class FileUploadService {
 
       const chunkDir = path.join(this.uploadDir, fileId);
       
-      // Verify directory exists
+      // Verify directory exists and list chunks
       try {
         await fs.access(chunkDir);
+        const files = await fs.readdir(chunkDir);
+        logger.logUpload(fileId, 'chunk directory verified', {
+          chunkDir,
+          filesFound: files.length,
+          expectedChunks: fileUpload.totalChunks,
+          files: files.sort()
+        });
+        
+        if (files.length !== fileUpload.totalChunks) {
+          throw new Error(`Expected ${fileUpload.totalChunks} chunks, found ${files.length}`);
+        }
       } catch (error) {
-        throw new FileSystemError(`Chunk directory not found: ${chunkDir}`, chunkDir, 'access');
+        throw new FileSystemError(`Chunk directory verification failed: ${error.message}`, chunkDir, 'access');
       }
 
       // Initialize GridFS upload stream
       const bucket = this.getBucket();
       if (!bucket) {
-        throw new Error('Database not connected');
+        throw new Error('Database not connected - GridFS bucket unavailable');
       }
+      
+      logger.logUpload(fileId, 'GridFS bucket initialized', {
+        bucketName: 'uploads',
+        dbState: mongoose.connection.readyState
+      });
       
       uploadStream = bucket.openUploadStream(fileUpload.originalName, {
         metadata: {
@@ -294,36 +327,44 @@ class FileUploadService {
         
         try {
           const stats = await fs.stat(chunkPath);
-          const readStream = fsSync.createReadStream(chunkPath);
+          const chunkData = await fs.readFile(chunkPath);
           
-          await new Promise((resolve, reject) => {
-            readStream.on('data', (chunk) => {
-              if (!uploadStream.write(chunk)) {
-                readStream.pause();
-                uploadStream.once('drain', () => readStream.resume());
-              }
-            });
-            
-            readStream.on('end', resolve);
-            readStream.on('error', reject);
+          // Write chunk data to GridFS stream
+          const writePromise = new Promise((resolve, reject) => {
+            if (uploadStream.write(chunkData)) {
+              resolve();
+            } else {
+              uploadStream.once('drain', resolve);
+              uploadStream.once('error', reject);
+            }
           });
           
+          await writePromise;
           totalBytesWritten += stats.size;
           
           logger.logUpload(fileId, 'chunk merged', { 
             chunkIndex: i + 1, 
-            totalChunks: fileUpload.totalChunks 
+            totalChunks: fileUpload.totalChunks,
+            chunkSize: stats.size
           });
         } catch (error) {
           throw new FileSystemError(`Failed to read chunk ${i}: ${error.message}`, chunkPath, 'read');
         }
       }
 
+      // End the upload stream
       uploadStream.end();
 
+      // Wait for the upload to complete
       await new Promise((resolve, reject) => {
-        uploadStream.on('finish', resolve);
-        uploadStream.on('error', reject);
+        uploadStream.on('finish', () => {
+          logger.logUpload(fileId, 'GridFS upload finished', { totalBytes: totalBytesWritten });
+          resolve();
+        });
+        uploadStream.on('error', (error) => {
+          logger.logUploadError('GridFS upload error', error, { fileId });
+          reject(error);
+        });
       });
 
       // Verify file size

@@ -387,11 +387,80 @@ class SimpleAPITester {
     });
   }
 
+  async debugProcessingFiles() {
+    console.log('\n🔍 Checking for files stuck in processing...');
+    
+    try {
+      const response = await fetch(`${this.baseURL}/api/files?status=processing`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch processing files: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      const processingFiles = data.data?.files || [];
+      
+      console.log(`📊 Found ${processingFiles.length} files in processing status`);
+      
+      for (const file of processingFiles) {
+        console.log(`\n📄 File: ${file.originalName}`);
+        console.log(`   ID: ${file.fileId}`);
+        console.log(`   Size: ${file.size} bytes`);
+        console.log(`   Status: ${file.status}`);
+        console.log(`   Progress: ${file.uploadedChunks}/${file.totalChunks} chunks`);
+        console.log(`   Created: ${new Date(file.createdAt).toLocaleString()}`);
+        console.log(`   Updated: ${new Date(file.updatedAt).toLocaleString()}`);
+        
+        // Check how long it's been processing
+        const updatedTime = new Date(file.updatedAt);
+        const now = new Date();
+        const minutesStuck = Math.floor((now - updatedTime) / (1000 * 60));
+        
+        if (minutesStuck > 2) {
+          console.log(`   ⚠️  File has been stuck for ${minutesStuck} minutes`);
+          
+          // Try to complete the upload again
+          console.log('   🔄 Attempting to re-complete upload...');
+          try {
+            const completeResponse = await fetch(`${this.baseURL}/api/upload/complete`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ fileId: file.fileId })
+            });
+            
+            if (completeResponse.ok) {
+              const result = await completeResponse.json();
+              console.log(`   ✅ Re-completion result: ${result.data.status}`);
+            } else {
+              console.log(`   ❌ Re-completion failed: ${completeResponse.status}`);
+            }
+          } catch (retryError) {
+            console.log(`   ❌ Re-completion error: ${retryError.message}`);
+          }
+        }
+        
+        // Check current status after retry
+        const statusResponse = await fetch(`${this.baseURL}/api/upload/status/${file.fileId}`);
+        if (statusResponse.ok) {
+          const statusData = await statusResponse.json();
+          console.log(`   Current Status: ${statusData.data.status}`);
+          if (statusData.data.errorMessage) {
+            console.log(`   Error: ${statusData.data.errorMessage}`);
+          }
+        }
+      }
+      
+    } catch (error) {
+      console.error('❌ Debug failed:', error.message);
+    }
+  }
+
   async runAllTests() {
     console.log('🚀 Starting API Tests...\n');
     console.log(`Testing against: ${this.baseURL}`);
     
     try {
+      await this.debugProcessingFiles();
       await this.testHealthEndpoints();
       await this.testUploadInitialization();
       await this.testChunkUpload();

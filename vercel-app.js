@@ -60,6 +60,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 let cachedDb = null;
 
 async function connectToDatabase() {
+  // If already connected, return immediately
   if (cachedDb && mongoose.connection.readyState === 1) {
     return cachedDb;
   }
@@ -72,19 +73,33 @@ async function connectToDatabase() {
     }
 
     const options = {
-      serverSelectionTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 10000,
       socketTimeoutMS: 45000,
+      connectTimeoutMS: 10000,
       maxPoolSize: 10,
       minPoolSize: 2,
+      bufferCommands: true,
+      retryWrites: true,
+      retryReads: true
     };
 
-    await mongoose.connect(mongoUri, options);
-    cachedDb = mongoose.connection;
+    // Close existing connection if it's in a bad state
+    if (mongoose.connection.readyState === 2 || mongoose.connection.readyState === 3) {
+      await mongoose.connection.close();
+    }
+
+    // Connect if not already connected
+    if (mongoose.connection.readyState !== 1) {
+      await mongoose.connect(mongoUri, options);
+    }
     
+    cachedDb = mongoose.connection;
     logger.info('MongoDB connected successfully');
     return cachedDb;
+    
   } catch (error) {
     logger.error('MongoDB connection error:', error);
+    cachedDb = null;
     throw error;
   }
 }
@@ -167,19 +182,21 @@ app.use(async (req, res, next) => {
   try {
     await connectToDatabase();
     
-    // Ensure mongoose is ready before proceeding
-    if (mongoose.connection.readyState !== 1) {
-      // Try to reconnect if not connected
-      await connectToDatabase();
-      if (mongoose.connection.readyState !== 1) {
-        throw new Error('Database connection not established');
-      }
+    // Simple check - if connected, proceed
+    if (mongoose.connection.readyState === 1) {
+      return next();
     }
     
-    next();
+    // If not connected, return error
+    return res.status(503).json({
+      success: false,
+      error: 'Service Unavailable',
+      message: 'Database connection not ready'
+    });
+    
   } catch (error) {
-    logger.error('Database connection failed:', error);
-    res.status(503).json({
+    logger.error('Database connection middleware error:', error);
+    return res.status(503).json({
       success: false,
       error: 'Service Unavailable',
       message: 'Unable to connect to database',

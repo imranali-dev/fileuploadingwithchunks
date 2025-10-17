@@ -65,7 +65,7 @@ class DatabaseService {
           connectTimeoutMS: config.database.connectTimeout,
           retryWrites: config.database.retryWrites,
           retryReads: config.database.retryReads,
-          bufferCommands: false // Disable buffering to ensure connection is ready
+          bufferCommands: true // Enable buffering for serverless environments
         });
 
         const duration = Date.now() - startTime;

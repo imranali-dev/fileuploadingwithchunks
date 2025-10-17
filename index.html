@@ -766,17 +766,24 @@
                     updateUploadStats(file.size);
                 }
 
-                // Complete upload
-                elements.progressText.textContent = 'Finalizing upload...';
-                await completeUpload(fileId);
-
-                // Poll for processing completion
-                elements.progressText.textContent = 'Processing file...';
-                await pollUploadStatus(fileId);
-
-                showAlert('✅ File uploaded and processed successfully!', 'success');
-                resetUpload();
-                loadFiles();
+                // Complete upload and process file
+                elements.progressText.textContent = 'Finalizing and processing file...';
+                const result = await completeUpload(fileId);
+                
+                // Check if processing completed immediately
+                if (result.data.status === 'completed') {
+                    showAlert('✅ File uploaded and processed successfully!', 'success');
+                    resetUpload();
+                    loadFiles();
+                } else {
+                    // Fall back to polling if still processing
+                    elements.progressText.textContent = 'Processing file...';
+                    await pollUploadStatus(fileId);
+                    
+                    showAlert('✅ File uploaded and processed successfully!', 'success');
+                    resetUpload();
+                    loadFiles();
+                }
 
             } catch (error) {
                 console.error('Upload error:', error);
