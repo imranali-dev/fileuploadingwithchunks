@@ -177,12 +177,20 @@ app.use(express.static('./', {
   }
 }));
 
-// Database connection middleware
+// Optimized database connection middleware
 app.use(async (req, res, next) => {
+  // Skip database check for static files and health checks
+  if (req.path.startsWith('/static') || req.path === '/health' || req.path === '/') {
+    return next();
+  }
+  
   try {
-    await connectToDatabase();
+    // Only connect if not already connected
+    if (mongoose.connection.readyState !== 1) {
+      await connectToDatabase();
+    }
     
-    // Simple check - if connected, proceed
+    // Quick check - if connected, proceed immediately
     if (mongoose.connection.readyState === 1) {
       return next();
     }

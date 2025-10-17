@@ -1046,41 +1046,7 @@ app.post('/api/upload/cancel', asyncHandler(async (req, res) => {
   }
 }));
 
-// Health check with detailed status
-app.get('/health', asyncHandler(async (req, res) => {
-  const health = {
-    status: 'OK',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    mongodb: {
-      status: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-      readyState: mongoose.connection.readyState
-    },
-    memory: process.memoryUsage(),
-    system: {
-      platform: process.platform,
-      nodeVersion: process.version,
-      pid: process.pid
-    }
-  };
-
-  // Check if MongoDB is actually responsive
-  if (mongoose.connection.readyState === 1) {
-    try {
-      await mongoose.connection.db.admin().ping();
-      health.mongodb.ping = 'success';
-    } catch (error) {
-      health.mongodb.ping = 'failed';
-      health.status = 'DEGRADED';
-      logger.error('MongoDB ping failed', error);
-    }
-  } else {
-    health.status = 'UNHEALTHY';
-  }
-
-  const statusCode = health.status === 'OK' ? 200 : health.status === 'DEGRADED' ? 200 : 503;
-  res.status(statusCode).json(health);
-}));
+// Health check routes are handled by app.js - removed duplicate
 
 // Cleanup stale uploads (run periodically)
 const cleanupStaleUploads = async () => {

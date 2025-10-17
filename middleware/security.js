@@ -22,6 +22,7 @@ const securityMiddleware = helmet({
     },
   },
   crossOriginEmbedderPolicy: false,
+  noSniff: true, // Adds X-Content-Type-Options: nosniff
   hsts: {
     maxAge: 31536000,
     includeSubDomains: true,
