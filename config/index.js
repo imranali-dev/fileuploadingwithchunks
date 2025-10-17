@@ -37,8 +37,12 @@ class Config {
 
   // Upload Configuration
   get upload() {
+    // Use /tmp directory for serverless environments
+    const isServerless = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME;
+    const defaultUploadDir = isServerless ? '/tmp/uploads' : './uploads';
+    
     return {
-      uploadDir: process.env.UPLOAD_DIR || './uploads',
+      uploadDir: process.env.UPLOAD_DIR || defaultUploadDir,
       chunkSizeLimit: parseInt(process.env.CHUNK_SIZE_LIMIT) || 50 * 1024 * 1024, // 50MB
       totalSizeLimit: parseInt(process.env.TOTAL_SIZE_LIMIT) || 5 * 1024 * 1024 * 1024, // 5GB
       fileExpiryHours: parseInt(process.env.FILE_EXPIRY_HOURS) || 24,

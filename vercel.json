@@ -1,11 +1,25 @@
 {
   "version": 2,
   "builds": [
-    { "src": "vercel-app.js", "use": "@vercel/node" },
-    { "src": "index.html", "use": "@vercel/static" }
+    {
+      "src": "vercel-app.js",
+      "use": "@vercel/node",
+      "config": {
+        "maxLambdaSize": "50mb"
+      }
+    },
+    {
+      "src": "index.html",
+      "use": "@vercel/static"
+    }
   ],
   "routes": [
+    { "src": "/health", "dest": "/vercel-app.js" },
     { "src": "/api/(.*)", "dest": "/vercel-app.js" },
     { "src": "/(.*)", "dest": "/index.html" }
-  ]
+  ],
+  "env": {
+    "NODE_ENV": "production",
+    "VERCEL": "true"
+  }
 }

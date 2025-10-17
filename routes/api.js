@@ -37,13 +37,18 @@ const storage = multer.diskStorage({
       const chunkDir = path.join(config.upload.uploadDir, fileId);
       
       try {
-        await fs.access(chunkDir);
-      } catch {
+        // Ensure base upload directory exists first
+        await fs.mkdir(config.upload.uploadDir, { recursive: true });
+        // Then ensure chunk directory exists
         await fs.mkdir(chunkDir, { recursive: true });
+      } catch (mkdirError) {
+        console.error('Directory creation error:', mkdirError);
+        return cb(mkdirError);
       }
       
       cb(null, chunkDir);
     } catch (error) {
+      console.error('Multer destination error:', error);
       cb(error);
     }
   },

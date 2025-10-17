@@ -38,6 +38,11 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 app.use(compression());
+// Vercel serverless functions have a 4.5MB request limit
+const bodyLimit = process.env.VERCEL ? '4mb' : '10mb';
+app.use(express.json({ limit: bodyLimit }));
+app.use(express.urlencoded({ extended: true, limit: bodyLimit }));
+
 app.use(cors({
   origin: process.env.ALLOWED_ORIGINS || '*',
   credentials: true,
@@ -52,9 +57,6 @@ app.use(cors({
     'x-file-size'
   ]
 }));
-
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Cache MongoDB connection for Vercel
 let cachedDb = null;
