@@ -16,8 +16,25 @@ const logger = require('./services/logger');
 
 const app = express();
 
+// Trust proxy for Vercel
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      scriptSrcAttr: ["'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
+  },
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 app.use(compression());
@@ -25,7 +42,15 @@ app.use(cors({
   origin: process.env.ALLOWED_ORIGINS || '*',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'x-chunk-index', 
+    'x-total-chunks', 
+    'x-file-id', 
+    'x-file-name', 
+    'x-file-size'
+  ]
 }));
 
 app.use(express.json({ limit: '10mb' }));
@@ -141,6 +166,16 @@ app.use(express.static('./', {
 app.use(async (req, res, next) => {
   try {
     await connectToDatabase();
+    
+    // Ensure mongoose is ready before proceeding
+    if (mongoose.connection.readyState !== 1) {
+      // Try to reconnect if not connected
+      await connectToDatabase();
+      if (mongoose.connection.readyState !== 1) {
+        throw new Error('Database connection not established');
+      }
+    }
+    
     next();
   } catch (error) {
     logger.error('Database connection failed:', error);

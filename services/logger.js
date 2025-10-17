@@ -121,10 +121,15 @@ class Logger {
 
     // Handle uncaught exceptions
     process.on('uncaughtException', (error) => {
-      this.logger.error('Uncaught Exception', {
-        error: error.message,
-        stack: error.stack
-      });
+      try {
+        this.logger.error('Uncaught Exception', {
+          error: error.message,
+          stack: error.stack
+        });
+      } catch (logError) {
+        console.error('Logger error:', logError);
+        console.error('Original error:', error);
+      }
       
       // Give time to log before exiting
       setTimeout(() => {

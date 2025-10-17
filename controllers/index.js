@@ -146,6 +146,15 @@ class FileController {
     try {
       const { page, limit, status, sortBy, sortOrder } = req.query;
       
+      // Ensure database connection before querying
+      const mongoose = require('mongoose');
+      const databaseService = require('../services/database');
+      
+      // Wait for database connection if not ready
+      if (mongoose.connection.readyState !== 1) {
+        await databaseService.connect();
+      }
+      
       const FileUpload = require('../models/FileUpload');
       
       const query = {};

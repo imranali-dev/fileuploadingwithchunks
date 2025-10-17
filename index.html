@@ -544,7 +544,7 @@
         // Configuration
         const CONFIG = {
             API_URL: window.location.hostname === 'localhost' 
-                ? 'http://localhost:3000/api' 
+                ? `http://localhost:${window.location.port || '3000'}/api` 
                 : '/api',
             CHUNK_SIZE: 50 * 1024 * 1024, // 50MB chunks
             MAX_FILE_SIZE: 5 * 1024 * 1024 * 1024, // 5GB
@@ -1189,7 +1189,7 @@
         async function checkServerHealth() {
             try {
                 const healthUrl = window.location.hostname === 'localhost' 
-                    ? 'http://localhost:3000/health' 
+                    ? `http://localhost:${window.location.port || '3000'}/health` 
                     : '/health';
                 const response = await fetch(healthUrl);
                 if (response.ok) {

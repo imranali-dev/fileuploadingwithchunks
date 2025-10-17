@@ -11,7 +11,7 @@ const securityMiddleware = helmet({
     directives: {
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
       scriptSrcAttr: ["'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "https:"],
       connectSrc: ["'self'"],
@@ -295,7 +295,20 @@ const trustProxy = (req, res, next) => {
   // Trust first proxy (useful when behind load balancer)
   req.clientIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
 
-  // req.ip = req.ip || req.connection.remoteAddress;
+  // Use Object.defineProperty to set req.ip if it's not already set
+  if (!req.ip) {
+    try {
+      Object.defineProperty(req, 'ip', {
+        value: req.clientIp,
+        writable: true,
+        enumerable: true,
+        configurable: true
+      });
+    } catch (error) {
+      // If we can't set req.ip, just use clientIp
+      req.clientIp = req.clientIp;
+    }
+  }
   next();
 };
 

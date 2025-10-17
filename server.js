@@ -18,7 +18,7 @@ const RETRY_DELAY = 5000;
 const CHUNK_SIZE_LIMIT = 50 * 1024 * 1024; // 50MB
 const TOTAL_SIZE_LIMIT = 5 * 1024 * 1024 * 1024; // 5GB
 const FILE_EXPIRY_HOURS = 24;
-app.set('trust proxy', true);
+app.set('trust proxy', 1);
 
 // Logger utility
 const logger = {

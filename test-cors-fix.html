@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CORS Test</title>
+</head>
+<body>
+    <h1>CORS Test for Large File Upload System</h1>
+    <div id="status">Testing...</div>
+    <div id="results"></div>
+
+    <script>
+        async function testCORS() {
+            const status = document.getElementById('status');
+            const results = document.getElementById('results');
+            
+            try {
+                // Test 1: CORS preflight
+                status.textContent = 'Testing CORS preflight...';
+                const preflightResponse = await fetch('http://localhost:3000/api/upload/chunk', {
+                    method: 'OPTIONS',
+                    headers: {
+                        'Origin': window.location.origin,
+                        'Access-Control-Request-Method': 'POST',
+                        'Access-Control-Request-Headers': 'x-file-id'
+                    }
+                });
+                
+                const corsHeaders = {
+                    'Access-Control-Allow-Origin': preflightResponse.headers.get('Access-Control-Allow-Origin'),
+                    'Access-Control-Allow-Headers': preflightResponse.headers.get('Access-Control-Allow-Headers'),
+                    'Access-Control-Allow-Methods': preflightResponse.headers.get('Access-Control-Allow-Methods')
+                };
+                
+                results.innerHTML += '<h3>CORS Preflight Test:</h3>';
+                results.innerHTML += `<p>Status: ${preflightResponse.status}</p>`;
+                results.innerHTML += `<p>Allow-Origin: ${corsHeaders['Access-Control-Allow-Origin']}</p>`;
+                results.innerHTML += `<p>Allow-Headers: ${corsHeaders['Access-Control-Allow-Headers']}</p>`;
+                results.innerHTML += `<p>Allow-Methods: ${corsHeaders['Access-Control-Allow-Methods']}</p>`;
+                
+                // Test 2: Health endpoint
+                status.textContent = 'Testing health endpoint...';
+                const healthResponse = await fetch('http://localhost:3000/health');
+                const healthData = await healthResponse.json();
+                
+                results.innerHTML += '<h3>Health Endpoint Test:</h3>';
+                results.innerHTML += `<p>Status: ${healthResponse.status}</p>`;
+                results.innerHTML += `<p>Response: ${JSON.stringify(healthData, null, 2)}</p>`;
+                
+                // Test 3: File upload with custom headers
+                status.textContent = 'Testing file upload with custom headers...';
+                const formData = new FormData();
+                formData.append('chunk', new Blob(['test data'], { type: 'text/plain' }));
+                
+                const uploadResponse = await fetch('http://localhost:3000/api/upload/chunk', {
+                    method: 'POST',
+                    headers: {
+                        'x-file-id': 'test-file-123',
+                        'x-chunk-index': '0',
+                        'x-total-chunks': '1'
+                    },
+                    body: formData
+                });
+                
+                results.innerHTML += '<h3>File Upload Test:</h3>';
+                results.innerHTML += `<p>Status: ${uploadResponse.status}</p>`;
+                
+                if (uploadResponse.ok) {
+                    const uploadData = await uploadResponse.json();
+                    results.innerHTML += `<p>Response: ${JSON.stringify(uploadData, null, 2)}</p>`;
+                } else {
+                    results.innerHTML += `<p>Error: ${uploadResponse.statusText}</p>`;
+                }
+                
+                status.textContent = 'All tests completed!';
+                status.style.color = 'green';
+                
+            } catch (error) {
+                status.textContent = 'Test failed: ' + error.message;
+                status.style.color = 'red';
+                results.innerHTML += `<p style="color: red;">Error: ${error.message}</p>`;
+            }
+        }
+        
+        // Run tests when page loads
+        window.addEventListener('load', testCORS);
+    </script>
+</body>
+</html>

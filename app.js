@@ -46,6 +46,7 @@ class Application {
 
   setupMiddleware() {
     // Trust proxy (for accurate IP addresses behind load balancer)
+    this.app.set('trust proxy', 1); // Trust first proxy only
     this.app.use(trustProxy);
     
     // Security middleware
